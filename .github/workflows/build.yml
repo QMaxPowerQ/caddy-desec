@@ -40,4 +40,10 @@ jobs:
           echo "Gepusht: $IMAGE:2.11 und $IMAGE:$TAG"
 
       - name: Keepalive gegen die 60-Tage-Schedule-Deaktivierung
-        uses: gautamkrishnar/keepalive-workflow@v2
+        # leerer Commit statt externer Action (third-party actions sind auf
+        # Account-Ebene nicht freigegeben -> "Repository access blocked")
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "keepalive: scheduled workflow am Leben halten"
+          git push
