@@ -6,7 +6,7 @@ on:
   workflow_dispatch: {}     # manueller Trigger jederzeit moeglich
 
 # GITHUB_TOKEN-Permissions kommen vom Repo-Default (write-all), damit der
-# Action-Download (actions/checkout, keepalive) nicht blockiert wird.
+# Action-Download (actions/checkout) nicht blockiert wird.
 # write-all deckt contents:write (Keepalive) und packages:write (GHCR) ab.
 
 jobs:
@@ -21,8 +21,10 @@ jobs:
       - name: Login bei GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Image bauen (Basis caddy:2.11 frisch ziehen)
-        run: docker build --pull -t "$IMAGE:2.11" .
+      - name: Build linux/amd64 (nativ) zum Validieren
+        run: |
+          docker buildx create --name builder --use
+          docker buildx build --platform linux/amd64 --pull -t "$IMAGE:2.11" --load .
 
       - name: Validieren (Version, Module, Test-Config)
         run: |
@@ -30,14 +32,19 @@ jobs:
           docker run --rm "$IMAGE:2.11" caddy list-modules | grep -Ei "desec|crowdsec"
           docker run --rm -v "$PWD/test:/etc/caddy" "$IMAGE:2.11" caddy validate --config /etc/caddy/Caddyfile.test
 
-      - name: Versionstag setzen und pushen
+      - name: Versionstag bestimmen
+        id: tag
         run: |
           CV=$(docker run --rm "$IMAGE:2.11" caddy version | awk '{print $1}')
-          TAG="${CV}-$(date -u +%Y%m%d)"
-          docker tag "$IMAGE:2.11" "$IMAGE:$TAG"
-          docker push "$IMAGE:2.11"
-          docker push "$IMAGE:$TAG"
-          echo "Gepusht: $IMAGE:2.11 und $IMAGE:$TAG"
+          echo "version=$CV"
+          echo "TAG=${CV}-$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Multi-Arch-Build und Push (linux/amd64 + linux/arm64 via QEMU)
+        run: |
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+          docker buildx build --platform linux/amd64,linux/arm64 --pull \
+            -t "$IMAGE:2.11" -t "$IMAGE:${{ steps.tag.outputs.TAG }}" --push .
+          echo "Gepusht: $IMAGE:2.11 und $IMAGE:${{ steps.tag.outputs.TAG }} (amd64+arm64)"
 
       - name: Keepalive gegen die 60-Tage-Schedule-Deaktivierung
         # leerer Commit statt externer Action (third-party actions sind auf
