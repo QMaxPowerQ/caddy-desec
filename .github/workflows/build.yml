@@ -5,10 +5,9 @@ on:
     - cron: "23 4 * * 0"   # sonntags 04:23 UTC
   workflow_dispatch: {}     # manueller Trigger jederzeit moeglich
 
-permissions:
-  actions: read      # Action-Download (checkout/keepalive) mit eingeschraenktem Token
-  contents: write   # fuer Keepalive-Commit
-  packages: write    # fuer GHCR-Push
+# GITHUB_TOKEN-Permissions kommen vom Repo-Default (write-all), damit der
+# Action-Download (actions/checkout, keepalive) nicht blockiert wird.
+# write-all deckt contents:write (Keepalive) und packages:write (GHCR) ab.
 
 jobs:
   build:
