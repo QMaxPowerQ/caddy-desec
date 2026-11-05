@@ -1,0 +1,10 @@
+{
+	crowdsec {
+		api_url http://localhost:8080
+		api_key pipeline-test
+	}
+}
+
+:9999 {
+	respond "ok"
+}

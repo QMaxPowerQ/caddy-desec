@@ -1,0 +1,43 @@
+name: build
+
+on:
+  schedule:
+    - cron: "23 4 * * 0"   # sonntags 04:23 UTC
+  workflow_dispatch: {}     # manueller Trigger jederzeit moeglich
+
+permissions:
+  contents: write   # fuer Keepalive-Commit
+  packages: write    # fuer GHCR-Push
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image-Pfad bestimmen (GHCR verlangt Kleinschreibung)
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Login bei GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Image bauen (Basis caddy:2.11 frisch ziehen)
+        run: docker build --pull -t "$IMAGE:2.11" .
+
+      - name: Validieren (Version, Module, Test-Config)
+        run: |
+          docker run --rm "$IMAGE:2.11" caddy version
+          docker run --rm "$IMAGE:2.11" caddy list-modules | grep -Ei "desec|crowdsec"
+          docker run --rm -v "$PWD/test:/etc/caddy" "$IMAGE:2.11" caddy validate --config /etc/caddy/Caddyfile.test
+
+      - name: Versionstag setzen und pushen
+        run: |
+          CV=$(docker run --rm "$IMAGE:2.11" caddy version | awk '{print $1}')
+          TAG="${CV}-$(date -u +%Y%m%d)"
+          docker tag "$IMAGE:2.11" "$IMAGE:$TAG"
+          docker push "$IMAGE:2.11"
+          docker push "$IMAGE:$TAG"
+          echo "Gepusht: $IMAGE:2.11 und $IMAGE:$TAG"
+
+      - name: Keepalive gegen die 60-Tage-Schedule-Deaktivierung
+        uses: gautamkrishnar/keepalive-workflow@v2
